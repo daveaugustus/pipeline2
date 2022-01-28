@@ -85,11 +85,14 @@ func ParseOrg(ctx context.Context, fileDest <-chan string) <-chan Org {
 	return orgChan
 }
 
-func ParseKeyDump(ctx context.Context, fileDest <-chan string) <-chan interface{} {
-	keyDump := make(chan interface{})
+func ParseKeyDump(ctx context.Context, fileDest <-chan string) <-chan KeyDump {
+	keyDump := make(chan KeyDump)
 
 	go func() {
 		defer close(keyDump)
+		keyDump <- KeyDump{
+			Admin: ,
+		}
 	}()
 	return keyDump
 }
@@ -215,12 +218,12 @@ func RunComplexPipeline() error {
 // /
 //
 func main() {
-	// ch := Unzip(context.Background(), "/home/dave/eureka/data-pipeline-golang/backup.zip")
-	// count := 1
-	// for i := range ch {
-	// 	fmt.Println(count, i)
-	// 	count++
-	// }
+	ch := Unzip(context.Background(), "/home/dave/eureka/data-pipeline-golang/backup.zip")
+	count := 1
+	for i := range ch {
+		fmt.Println(count, i)
+		count++
+	}
 
 	// Phase 2
 
