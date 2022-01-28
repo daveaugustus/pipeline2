@@ -91,7 +91,7 @@ func ParseKeyDump(ctx context.Context, fileDest <-chan string) <-chan KeyDump {
 	go func() {
 		defer close(keyDump)
 		keyDump <- KeyDump{
-			Admin: ,
+			Admin: true,
 		}
 	}()
 	return keyDump
@@ -114,7 +114,7 @@ func ConflictingUsers(ctx context.Context, user <-chan User) <-chan User {
 	go func() {
 		defer close(confUser)
 		// Check if the user is in the DB
-		confUser <- User{Username: "Alpha"}
+		confUser <- User{Username: "Gamma"}
 	}()
 	return confUser
 }
@@ -136,7 +136,7 @@ func AdminUsers(ctx context.Context, user <-chan User) <-chan User {
 	go func() {
 		defer close(adminUser)
 		// Check if the user is in the DB
-		adminUser <- User{Username: "Alpha"}
+		adminUser <- User{Username: "Delta"}
 	}()
 	return adminUser
 }
