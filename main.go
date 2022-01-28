@@ -8,10 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
-func Unzip(ctx context.Context, src string) <-chan string {
+func Unzip(ctx context.Context, src string) (<-chan string, <-chan error) {
 	filePath := make(chan string)
+	errc := make(chan error, 1)
 	go func() {
 		r, err := zip.OpenReader(src)
 		if err != nil {
@@ -19,13 +22,15 @@ func Unzip(ctx context.Context, src string) <-chan string {
 			ctx.Done()
 		}
 		defer r.Close()
+		defer close(filePath)
+		defer close(errc)
 
 		for _, f := range r.File {
 			fpath := filepath.Join("", f.Name)
 
 			// Checking for any invalid file paths
 			if !strings.HasPrefix(fpath, filepath.Clean("backup")+string(os.PathSeparator)) {
-				fmt.Println("invalid path")
+				errc <- errors.Errorf("invalid path")
 				ctx.Done()
 			}
 
@@ -38,7 +43,7 @@ func Unzip(ctx context.Context, src string) <-chan string {
 
 			// Creating the files in the target directory
 			if err = os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
-				fmt.Println("cannot create dir")
+				errc <- errors.Errorf("cannot create dir")
 				ctx.Done()
 			}
 
@@ -48,13 +53,13 @@ func Unzip(ctx context.Context, src string) <-chan string {
 				os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
 				f.Mode())
 			if err != nil {
-				fmt.Println("cannot create a file")
+				errc <- errors.Errorf("cannot create a file")
 				ctx.Done()
 			}
 
 			rc, err := f.Open()
 			if err != nil {
-				fmt.Println("cannot open file")
+				errc <- errors.Errorf("cannot open file")
 				ctx.Done()
 			}
 
@@ -64,103 +69,139 @@ func Unzip(ctx context.Context, src string) <-chan string {
 			rc.Close()
 
 			if err != nil {
-				fmt.Println("cannot copy a file")
+				errc <- errors.Errorf("cannot copy a file")
 				ctx.Done()
 			}
-			filePath <- fpath
+
+			select {
+			case filePath <- fpath:
+			case <-ctx.Done():
+				return
+			}
 		}
-		close(filePath)
+
 	}()
-	return filePath
+	return filePath, errc
 }
 
-func ParseOrg(ctx context.Context, fileDest <-chan string) <-chan Org {
+func ParseOrg(ctx context.Context, fileDest <-chan string) (<-chan Org, <-chan error) {
 	orgChan := make(chan Org)
+	errc := make(chan error, 1)
 
 	go func() {
 		defer close(orgChan)
+		defer close(errc)
+
 		orgChan <- Org{Name: "Org Alpha"}
 		orgChan <- Org{Name: "Org Beta"}
 	}()
-	return orgChan
+	return orgChan, errc
 }
 
-func ParseKeyDump(ctx context.Context, fileDest <-chan string) <-chan KeyDump {
+func ParseKeyDump(ctx context.Context, fileDest <-chan string) (<-chan KeyDump, <-chan error) {
 	keyDump := make(chan KeyDump)
+	errc := make(chan error, 1)
 
 	go func() {
 		defer close(keyDump)
+		defer close(errc)
+
 		keyDump <- KeyDump{
 			Admin: true,
 		}
 	}()
-	return keyDump
+	return keyDump, errc
 }
 
-func ParseUser(ctx context.Context, fileDest <-chan string) <-chan User {
+func ParseUser(ctx context.Context, fileDest <-chan string) (<-chan User, <-chan error) {
 	userChan := make(chan User)
+	errc := make(chan error, 1)
 
 	go func() {
 		defer close(userChan)
+		defer close(errc)
+
 		userChan <- User{Username: "Alpha"}
 		userChan <- User{Username: "Beta"}
 	}()
-	return userChan
+	return userChan, errc
 }
 
-func ConflictingUsers(ctx context.Context, user <-chan User) <-chan User {
+func ConflictingUsers(ctx context.Context, user <-chan User) (<-chan User, <-chan error) {
 	confUser := make(chan User)
+	errc := make(chan error, 1)
 
 	go func() {
 		defer close(confUser)
+		defer close(errc)
+
 		// Check if the user is in the DB
 		confUser <- User{Username: "Gamma"}
 	}()
-	return confUser
+	return confUser, errc
 }
 
-// TODO: FIX this
-func OrgMembers(ctx context.Context, user <-chan User) <-chan map[User][]Org {
+func OrgMembers(ctx context.Context, user <-chan User) (<-chan map[User][]Org, <-chan error) {
 	userOrg := make(chan map[User][]Org)
+	errc := make(chan error, 1)
+
 	go func() {
 		defer close(userOrg)
+		defer close(errc)
+
 		userOrgMap := map[User][]Org{}
 		userOrg <- userOrgMap
 	}()
-	return userOrg
+	return userOrg, errc
 }
 
-func AdminUsers(ctx context.Context, user <-chan User) <-chan User {
+func AdminUsers(ctx context.Context, user <-chan User) (<-chan User, <-chan error) {
 	adminUser := make(chan User)
+	errc := make(chan error, 1)
 
 	go func() {
 		defer close(adminUser)
+		defer close(errc)
+
 		// Check if the user is in the DB
 		adminUser <- User{Username: "Delta"}
+		errc <- errors.Errorf("asd path")
 	}()
-	return adminUser
+	return adminUser, errc
 }
 
-func RunComplexPipeline() error {
+func RunMigrationPipeline(filePath string) {
+	fmt.Println("Pipeline started. Waiting for pipeline to complete.")
 
-	// var errcList []<-chan error
+	var errcList []<-chan error
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	// Unzipping
-	ch := Unzip(ctx, "/home/dave/eureka/data-pipeline-golang/backup.zip")
+	ch, errc := Unzip(ctx, filePath)
+	errcList = append(errcList, errc)
 
-	orgs := ParseOrg(ctx, ch)
+	orgs, errc := ParseOrg(ctx, ch)
+	errcList = append(errcList, errc)
 
-	keyDump := ParseKeyDump(ctx, ch)
+	keyDump, errc := ParseKeyDump(ctx, ch)
+	errcList = append(errcList, errc)
 
-	users := ParseUser(ctx, ch)
+	users, errc := ParseUser(ctx, ch)
+	errcList = append(errcList, errc)
 
-	existingUsers := ConflictingUsers(ctx, users)
+	existingUsers, errc := ConflictingUsers(ctx, users)
+	errcList = append(errcList, errc)
 
-	orgsUser := OrgMembers(ctx, users)
+	orgsUser, errc := OrgMembers(ctx, users)
+	errcList = append(errcList, errc)
 
-	adminUsers := AdminUsers(ctx, users)
+	adminUsers, errc := AdminUsers(ctx, users)
+	errcList = append(errcList, errc)
+	// // Files
+	// for c := range ch {
+	// 	fmt.Println("Files: ", c)
+	// }
 
 	// orgs
 	for org := range orgs {
@@ -191,9 +232,7 @@ func RunComplexPipeline() error {
 		fmt.Println("Admin User: ", au)
 	}
 
-	fmt.Println("Pipeline started. Waiting for pipeline to complete.")
-
-	return nil
+	// Log all the errors stored in errcList variable
 }
 
 //
@@ -218,12 +257,12 @@ func RunComplexPipeline() error {
 // /
 //
 func main() {
-	ch := Unzip(context.Background(), "/home/dave/eureka/data-pipeline-golang/backup.zip")
-	count := 1
-	for i := range ch {
-		fmt.Println(count, i)
-		count++
-	}
+	// ch, _ := Unzip(context.Background(), "/home/dave/eureka/data-pipeline-golang/backup.zip")
+	// count := 1
+	// for i := range ch {
+	// 	fmt.Println(count, i)
+	// 	count++
+	// }
 
 	// Phase 2
 
@@ -235,5 +274,5 @@ func main() {
 	// // 	count++
 	// // }
 	// SaveAndUpdate(org, kd)
-	RunComplexPipeline()
+	RunMigrationPipeline("/home/dave/eureka/data-pipeline-golang/backup.zip")
 }
