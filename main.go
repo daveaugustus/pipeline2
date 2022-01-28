@@ -74,15 +74,6 @@ func Unzip(ctx context.Context, src string) <-chan string {
 	return filePath
 }
 
-func ParseKeyDump(ctx context.Context, fileDest <-chan string) <-chan interface{} {
-	keyDump := make(chan interface{})
-
-	go func() {
-		defer close(keyDump)
-	}()
-	return keyDump
-}
-
 func ParseOrg(ctx context.Context, fileDest <-chan string) <-chan Org {
 	orgChan := make(chan Org)
 
@@ -92,6 +83,15 @@ func ParseOrg(ctx context.Context, fileDest <-chan string) <-chan Org {
 		orgChan <- Org{Name: "Org Beta"}
 	}()
 	return orgChan
+}
+
+func ParseKeyDump(ctx context.Context, fileDest <-chan string) <-chan interface{} {
+	keyDump := make(chan interface{})
+
+	go func() {
+		defer close(keyDump)
+	}()
+	return keyDump
 }
 
 func ParseUser(ctx context.Context, fileDest <-chan string) <-chan User {
@@ -117,14 +117,14 @@ func ConflictingUsers(ctx context.Context, user <-chan User) <-chan User {
 }
 
 // TODO: FIX this
-func OrgMembers(ctx context.Context, user <-chan User) <-chan interface{} {
-	confUser := make(chan interface{})
-
+func OrgMembers(ctx context.Context, user <-chan User) <-chan map[User][]Org {
+	userOrg := make(chan map[User][]Org)
 	go func() {
-		defer close(confUser)
-		confUser <- Org{Name: "Add"}
+		defer close(userOrg)
+		userOrgMap := map[User][]Org{}
+		userOrg <- userOrgMap
 	}()
-	return confUser
+	return userOrg
 }
 
 func AdminUsers(ctx context.Context, user <-chan User) <-chan User {
@@ -138,67 +138,89 @@ func AdminUsers(ctx context.Context, user <-chan User) <-chan User {
 	return adminUser
 }
 
-func RunComplexPipeline(base int, lines []string) error {
-	fmt.Printf("runComplexPipeline: base=%v, lines=%v\n", base, lines)
+func RunComplexPipeline() error {
 
+	// var errcList []<-chan error
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
-	var errcList []<-chan error
+	// Unzipping
+	ch := Unzip(ctx, "/home/dave/eureka/data-pipeline-golang/backup.zip")
 
-	// Source pipeline stage.
-	linec, errc, err := lineListSource(ctx, lines...)
-	if err != nil {
-		return err
-	}
-	errcList = append(errcList, errc)
+	orgs := ParseOrg(ctx, ch)
 
-	// Transformer pipeline stage 1.
-	numberc, errc, err := lineParser(ctx, base, linec)
-	if err != nil {
-		return err
-	}
-	errcList = append(errcList, errc)
+	keyDump := ParseKeyDump(ctx, ch)
 
-	// Transformer pipeline stage 2.
-	numberc1, numberc2, errc, err := splitter(ctx, numberc)
-	if err != nil {
-		return err
-	}
-	errcList = append(errcList, errc)
+	users := ParseUser(ctx, ch)
 
-	// Transformer pipeline stage 3.
-	numberc3, errc, err := squarer(ctx, numberc1)
-	if err != nil {
-		return err
-	}
-	errcList = append(errcList, errc)
+	existingUsers := ConflictingUsers(ctx, users)
 
-	// Sink pipeline stage 1.
-	errc, err = sink(ctx, numberc3)
-	if err != nil {
-		return err
-	}
-	errcList = append(errcList, errc)
+	orgsUser := OrgMembers(ctx, users)
 
-	// Sink pipeline stage 2.
-	errc, err = sink(ctx, numberc2)
-	if err != nil {
-		return err
+	adminUsers := AdminUsers(ctx, users)
+
+	// orgs
+	for org := range orgs {
+		fmt.Println("Organization: ", org)
 	}
-	errcList = append(errcList, errc)
+	fmt.Println()
+
+	// Keydump
+	for kd := range keyDump {
+		fmt.Println("Keydump: ", kd)
+	}
+	fmt.Println()
+
+	// Existing user
+	for eu := range existingUsers {
+		fmt.Println("Existing user: ", eu)
+	}
+	fmt.Println()
+
+	// User's Org
+	for ou := range orgsUser {
+		fmt.Println("User's Org: ", ou)
+	}
+
+	fmt.Println()
+	// Admin User
+	for au := range adminUsers {
+		fmt.Println("Admin User: ", au)
+	}
 
 	fmt.Println("Pipeline started. Waiting for pipeline to complete.")
 
-	return WaitForPipeline(errcList...)
+	return nil
 }
+
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+// /
+//
+//
+// /
+//
+//
+//
+//
+//
+// /
+//
 func main() {
-	ch := Unzip(context.Background(), "/home/dave/eureka/data-pipeline-golang/backup.zip")
-	count := 1
-	for i := range ch {
-		fmt.Println(count, i)
-		count++
-	}
+	// ch := Unzip(context.Background(), "/home/dave/eureka/data-pipeline-golang/backup.zip")
+	// count := 1
+	// for i := range ch {
+	// 	fmt.Println(count, i)
+	// 	count++
+	// }
 
 	// Phase 2
 
@@ -210,4 +232,5 @@ func main() {
 	// // 	count++
 	// // }
 	// SaveAndUpdate(org, kd)
+	RunComplexPipeline()
 }
