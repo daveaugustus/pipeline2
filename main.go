@@ -124,7 +124,7 @@ func migrationPipeline(source <-chan pipeline.Result, pipes ...MigrationPipe) {
 	fmt.Println("Pipeline Status: ", <-msg)
 }
 
-func RunmigrationPipeline(src string) {
+func RunPhaseOnePipeline(src string) {
 	c := make(chan pipeline.Result, 1)
 
 	c <- pipeline.Result{}
@@ -141,5 +141,5 @@ func RunmigrationPipeline(src string) {
 }
 
 func main() {
-	RunmigrationPipeline("")
+	RunPhaseOnePipeline("")
 }
