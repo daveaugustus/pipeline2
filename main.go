@@ -3,42 +3,33 @@ package main
 import (
 	"context"
 	"fmt"
+	"pipeline2/pipeline"
 )
 
-type MigrationPipe func(<-chan Result) <-chan Result
+type MigrationPipe func(<-chan pipeline.Result) <-chan pipeline.Result
 
-// Unzip returns all the files of the zipped file
-
-// --> Unzip --> ParseOrgs --> ParseUsers --> ........ --> CompletePhase1 --> Finish Pipeline ( Convert struct to JSON, store JSON to stage table, Update the status)
-//      |---------|---------------|------------------------------------------> Error Handle
-
-// --> StageTableReadJSON --> PopulateOrgs --> PopulateUsers --> ........ --> CompletePhase2 --> Finish Pipeline ( Update the status)
-//      |---------|---------------|------------------------------------------> Error Handle
-
-func UnzipSrc(src string) MigrationPipe {
-	return func(in <-chan Result) <-chan Result {
-		return unzip(context.Background(), src)
+// ParseOrg returns MigrationPipe
+func UnzipSrc(res <-chan pipeline.Result) MigrationPipe {
+	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
+		return unzip(context.Background(), res)
 	}
 }
 
-// func unZip(ctx context.Context, src <-chan string, errc <-chan error) <-chan *Result
-func unzip(ctx context.Context, src string) <-chan Result {
-	result := make(chan Result)
+func unzip(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
 	go func() {
-		defer close(result)
 		fmt.Println("Zip function is called!")
 	}()
 	return result
 }
 
 // ParseOrg returns MigrationPipe
-func ParseOrg(res <-chan Result) MigrationPipe {
-	return func(in <-chan Result) <-chan Result {
+func ParseOrg(res <-chan pipeline.Result) MigrationPipe {
+	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
 		return parseOrg(context.Background(), res)
 	}
 }
 
-func parseOrg(ctx context.Context, result <-chan Result) <-chan Result {
+func parseOrg(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
 	go func() {
 		fmt.Println("ParseOrg routine is called!")
 	}()
@@ -46,13 +37,13 @@ func parseOrg(ctx context.Context, result <-chan Result) <-chan Result {
 }
 
 // ParseUser returns MigrationPipe
-func ParseUser(res <-chan Result) MigrationPipe {
-	return func(in <-chan Result) <-chan Result {
+func ParseUser(res <-chan pipeline.Result) MigrationPipe {
+	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
 		return parseUser(context.Background(), res)
 	}
 }
 
-func parseUser(ctx context.Context, result <-chan Result) <-chan Result {
+func parseUser(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
 	go func() {
 		fmt.Println("ParseUser routine is called!")
 	}()
@@ -60,13 +51,13 @@ func parseUser(ctx context.Context, result <-chan Result) <-chan Result {
 }
 
 // ConflictingUsers returns MigrationPipe
-func ConflictingUsers(res <-chan Result) MigrationPipe {
-	return func(in <-chan Result) <-chan Result {
+func ConflictingUsers(res <-chan pipeline.Result) MigrationPipe {
+	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
 		return conflictingUsers(context.Background(), res)
 	}
 }
 
-func conflictingUsers(ctx context.Context, result <-chan Result) <-chan Result {
+func conflictingUsers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
 	go func() {
 		fmt.Println("Conflicting routine is called!")
 	}()
@@ -74,13 +65,13 @@ func conflictingUsers(ctx context.Context, result <-chan Result) <-chan Result {
 }
 
 // OrgMembers returns MigrationPipe
-func OrgMembers(res <-chan Result) MigrationPipe {
-	return func(in <-chan Result) <-chan Result {
+func OrgMembers(res <-chan pipeline.Result) MigrationPipe {
+	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
 		return orgMembers(context.Background(), res)
 	}
 }
 
-func orgMembers(ctx context.Context, result <-chan Result) <-chan Result {
+func orgMembers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
 	go func() {
 		fmt.Println("orgMembers routine is called!")
 	}()
@@ -88,13 +79,13 @@ func orgMembers(ctx context.Context, result <-chan Result) <-chan Result {
 }
 
 // AdminUsers Return MigrationPipe
-func AdminUsers(res <-chan Result) MigrationPipe {
-	return func(in <-chan Result) <-chan Result {
+func AdminUsers(res <-chan pipeline.Result) MigrationPipe {
+	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
 		return adminUsers(context.Background(), res)
 	}
 }
 
-func adminUsers(ctx context.Context, result <-chan Result) <-chan Result {
+func adminUsers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
 	go func() {
 		fmt.Println("adminUsers routine is called!")
 	}()
@@ -102,21 +93,21 @@ func adminUsers(ctx context.Context, result <-chan Result) <-chan Result {
 }
 
 // AdminUsers Return MigrationPipe
-func ParseKeyDump(res <-chan Result) MigrationPipe {
-	return func(in <-chan Result) <-chan Result {
+func ParseKeyDump(res <-chan pipeline.Result) MigrationPipe {
+	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
 		return parseKeyDump(context.Background(), res)
 	}
 }
 
 // ParseKeyDump returns Key Dump
-func parseKeyDump(ctx context.Context, result <-chan Result) <-chan Result {
+func parseKeyDump(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
 	go func() {
 		fmt.Println("parseKeyDump routine is called!")
 	}()
 	return result
 }
 
-func migrationPipeline(source <-chan Result, pipes ...MigrationPipe) {
+func migrationPipeline(source <-chan pipeline.Result, pipes ...MigrationPipe) {
 	fmt.Println("Pipeline started. Waiting for pipeline to complete.")
 	msg := make(chan string)
 	go func() {
@@ -133,15 +124,22 @@ func migrationPipeline(source <-chan Result, pipes ...MigrationPipe) {
 	fmt.Println("Pipeline Status: ", <-msg)
 }
 
-func RunmigrationPipeline() {
-	c := make(chan Result)
+func RunmigrationPipeline(src string) {
+	c := make(chan pipeline.Result, 1)
+
+	c <- pipeline.Result{}
+	defer close(c)
 
 	migrationPipeline(c,
-		UnzipSrc(""),
+		UnzipSrc(c),
 		ParseOrg(c),
 		ParseUser(c),
 		ConflictingUsers(c),
 		OrgMembers(c),
 		AdminUsers(c),
 	)
+}
+
+func main() {
+	RunmigrationPipeline("")
 }
