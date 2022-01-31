@@ -5,44 +5,6 @@ import (
 	"fmt"
 )
 
-type Result struct {
-	Meta         *Meta
-	ParsedResult *ParsedResult
-	Context      context.Context
-}
-
-type Meta struct {
-	StageResults []StageResult
-}
-
-type StageResult struct {
-	StageName string
-	IsSuccess bool
-	Failure   error
-}
-
-type ParsedResult struct {
-	Orgs      []Org
-	Users     []User
-	OrgsUsers []OrgsUsersAssociations
-	KeyDump   KeyDump
-}
-
-// type OrgsUsersAssociations map[User][]Org
-type OrgsUsersAssociations struct {
-	OrgName Org
-	Users   []User
-}
-
-type ActionOps int
-
-const (
-	Insert ActionOps = 1 + iota
-	Skip
-	Delete
-	Update
-)
-
 type MigrationPipe func(<-chan Result) <-chan Result
 
 // Unzip returns all the files of the zipped file
@@ -69,16 +31,16 @@ func unzip(ctx context.Context, src string) <-chan Result {
 	return result
 }
 
+// ParseOrg returns MigrationPipe
 func ParseOrg(res <-chan Result) MigrationPipe {
 	return func(in <-chan Result) <-chan Result {
 		return parseOrg(context.Background(), res)
 	}
 }
 
-// ParseOrg returns all the organizations from the unzipped file
 func parseOrg(ctx context.Context, result <-chan Result) <-chan Result {
 	go func() {
-		fmt.Println("ParseOrg function is called!")
+		fmt.Println("ParseOrg routine is called!")
 	}()
 	return result
 }
@@ -154,7 +116,7 @@ func parseKeyDump(ctx context.Context, result <-chan Result) <-chan Result {
 	return result
 }
 
-func RunMigrationPipeline(source <-chan Result, pipes ...MigrationPipe) {
+func migrationPipeline(source <-chan Result, pipes ...MigrationPipe) {
 	fmt.Println("Pipeline started. Waiting for pipeline to complete.")
 	msg := make(chan string)
 	go func() {
@@ -171,16 +133,15 @@ func RunMigrationPipeline(source <-chan Result, pipes ...MigrationPipe) {
 	fmt.Println("Pipeline Status: ", <-msg)
 }
 
-func main() {
+func RunmigrationPipeline() {
 	c := make(chan Result)
 
-	RunMigrationPipeline(c,
+	migrationPipeline(c,
 		UnzipSrc(""),
 		ParseOrg(c),
 		ParseUser(c),
 		ConflictingUsers(c),
 		OrgMembers(c),
 		AdminUsers(c),
-		ParseKeyDump(c),
 	)
 }
