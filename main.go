@@ -1,278 +1,186 @@
 package main
 
 import (
-	"archive/zip"
 	"context"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
-
-	"github.com/pkg/errors"
 )
 
-func Unzip(ctx context.Context, src string) (<-chan string, <-chan error) {
-	filePath := make(chan string)
-	errc := make(chan error, 1)
-	go func() {
-		r, err := zip.OpenReader(src)
-		if err != nil {
-			fmt.Println("cannot open reader")
-			ctx.Done()
-		}
-		defer r.Close()
-		defer close(filePath)
-		defer close(errc)
-
-		for _, f := range r.File {
-			fpath := filepath.Join("", f.Name)
-
-			// Checking for any invalid file paths
-			if !strings.HasPrefix(fpath, filepath.Clean("backup")+string(os.PathSeparator)) {
-				errc <- errors.Errorf("invalid path")
-				ctx.Done()
-			}
-
-			// filenames = append(filenames, fpath)
-
-			if f.FileInfo().IsDir() {
-				os.MkdirAll(fpath, os.ModePerm)
-				continue
-			}
-
-			// Creating the files in the target directory
-			if err = os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
-				errc <- errors.Errorf("cannot create dir")
-				ctx.Done()
-			}
-
-			// The created file will be stored in
-			// outFile with permissions to write &/or truncate
-			outFile, err := os.OpenFile(fpath,
-				os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
-				f.Mode())
-			if err != nil {
-				errc <- errors.Errorf("cannot create a file")
-				ctx.Done()
-			}
-
-			rc, err := f.Open()
-			if err != nil {
-				errc <- errors.Errorf("cannot open file")
-				ctx.Done()
-			}
-
-			_, err = io.Copy(outFile, rc)
-
-			outFile.Close()
-			rc.Close()
-
-			if err != nil {
-				errc <- errors.Errorf("cannot copy a file")
-				ctx.Done()
-			}
-
-			select {
-			case filePath <- fpath:
-			case <-ctx.Done():
-				return
-			}
-		}
-
-	}()
-	return filePath, errc
+type Result struct {
+	Meta         *Meta
+	ParsedResult *ParsedResult
+	Context      context.Context
 }
 
-func ParseOrg(ctx context.Context, fileDest <-chan string) (<-chan Org, <-chan error) {
-	orgChan := make(chan Org)
-	errc := make(chan error, 1)
-
-	go func() {
-		defer close(orgChan)
-		defer close(errc)
-
-		orgChan <- Org{Name: "Org Alpha"}
-		orgChan <- Org{Name: "Org Beta"}
-	}()
-	return orgChan, errc
+type Meta struct {
+	StageResults []StageResult
 }
 
-func ParseKeyDump(ctx context.Context, fileDest <-chan string) (<-chan KeyDump, <-chan error) {
-	keyDump := make(chan KeyDump)
-	errc := make(chan error, 1)
-
-	go func() {
-		defer close(keyDump)
-		defer close(errc)
-
-		keyDump <- KeyDump{
-			Admin: true,
-		}
-	}()
-	return keyDump, errc
+type StageResult struct {
+	StageName string
+	IsSuccess bool
+	Failure   error
 }
 
-func ParseUser(ctx context.Context, fileDest <-chan string) (<-chan User, <-chan error) {
-	userChan := make(chan User)
-	errc := make(chan error, 1)
-
-	go func() {
-		defer close(userChan)
-		defer close(errc)
-
-		userChan <- User{Username: "Alpha"}
-		userChan <- User{Username: "Beta"}
-	}()
-	return userChan, errc
+type ParsedResult struct {
+	Orgs      []Org
+	Users     []User
+	OrgsUsers []OrgsUsersAssociations
+	KeyDump   KeyDump
 }
 
-func ConflictingUsers(ctx context.Context, user <-chan User) (<-chan User, <-chan error) {
-	confUser := make(chan User)
-	errc := make(chan error, 1)
-
-	go func() {
-		defer close(confUser)
-		defer close(errc)
-
-		// Check if the user is in the DB
-		confUser <- User{Username: "Gamma"}
-	}()
-	return confUser, errc
+// type OrgsUsersAssociations map[User][]Org
+type OrgsUsersAssociations struct {
+	OrgName Org
+	Users   []User
 }
 
-func OrgMembers(ctx context.Context, user <-chan User) (<-chan map[User][]Org, <-chan error) {
-	userOrg := make(chan map[User][]Org)
-	errc := make(chan error, 1)
+type ActionOps int
 
-	go func() {
-		defer close(userOrg)
-		defer close(errc)
+const (
+	Insert ActionOps = 1 + iota
+	Skip
+	Delete
+	Update
+)
 
-		userOrgMap := map[User][]Org{}
-		userOrg <- userOrgMap
-	}()
-	return userOrg, errc
+type MigrationPipe func(<-chan Result) <-chan Result
+
+// Unzip returns all the files of the zipped file
+
+// --> Unzip --> ParseOrgs --> ParseUsers --> ........ --> CompletePhase1 --> Finish Pipeline ( Convert struct to JSON, store JSON to stage table, Update the status)
+//      |---------|---------------|------------------------------------------> Error Handle
+
+// --> StageTableReadJSON --> PopulateOrgs --> PopulateUsers --> ........ --> CompletePhase2 --> Finish Pipeline ( Update the status)
+//      |---------|---------------|------------------------------------------> Error Handle
+
+func UnzipSrc(src string) MigrationPipe {
+	return func(in <-chan Result) <-chan Result {
+		return unzip(context.Background(), src)
+	}
 }
 
-func AdminUsers(ctx context.Context, user <-chan User) (<-chan User, <-chan error) {
-	adminUser := make(chan User)
-	errc := make(chan error, 1)
-
+// func unZip(ctx context.Context, src <-chan string, errc <-chan error) <-chan *Result
+func unzip(ctx context.Context, src string) <-chan Result {
+	result := make(chan Result)
 	go func() {
-		defer close(adminUser)
-		defer close(errc)
-
-		// Check if the user is in the DB
-		adminUser <- User{Username: "Delta"}
-		errc <- errors.Errorf("asd path")
+		defer close(result)
+		fmt.Println("Zip function is called!")
 	}()
-	return adminUser, errc
+	return result
 }
 
-func RunMigrationPipeline(filePath string) {
+func ParseOrg(res <-chan Result) MigrationPipe {
+	return func(in <-chan Result) <-chan Result {
+		return parseOrg(context.Background(), res)
+	}
+}
+
+// ParseOrg returns all the organizations from the unzipped file
+func parseOrg(ctx context.Context, result <-chan Result) <-chan Result {
+	go func() {
+		fmt.Println("ParseOrg function is called!")
+	}()
+	return result
+}
+
+// ParseUser returns MigrationPipe
+func ParseUser(res <-chan Result) MigrationPipe {
+	return func(in <-chan Result) <-chan Result {
+		return parseUser(context.Background(), res)
+	}
+}
+
+func parseUser(ctx context.Context, result <-chan Result) <-chan Result {
+	go func() {
+		fmt.Println("ParseUser routine is called!")
+	}()
+	return result
+}
+
+// ConflictingUsers returns MigrationPipe
+func ConflictingUsers(res <-chan Result) MigrationPipe {
+	return func(in <-chan Result) <-chan Result {
+		return conflictingUsers(context.Background(), res)
+	}
+}
+
+func conflictingUsers(ctx context.Context, result <-chan Result) <-chan Result {
+	go func() {
+		fmt.Println("Conflicting routine is called!")
+	}()
+	return result
+}
+
+// OrgMembers returns MigrationPipe
+func OrgMembers(res <-chan Result) MigrationPipe {
+	return func(in <-chan Result) <-chan Result {
+		return orgMembers(context.Background(), res)
+	}
+}
+
+func orgMembers(ctx context.Context, result <-chan Result) <-chan Result {
+	go func() {
+		fmt.Println("orgMembers routine is called!")
+	}()
+	return result
+}
+
+// AdminUsers Return MigrationPipe
+func AdminUsers(res <-chan Result) MigrationPipe {
+	return func(in <-chan Result) <-chan Result {
+		return adminUsers(context.Background(), res)
+	}
+}
+
+func adminUsers(ctx context.Context, result <-chan Result) <-chan Result {
+	go func() {
+		fmt.Println("adminUsers routine is called!")
+	}()
+	return result
+}
+
+// AdminUsers Return MigrationPipe
+func ParseKeyDump(res <-chan Result) MigrationPipe {
+	return func(in <-chan Result) <-chan Result {
+		return parseKeyDump(context.Background(), res)
+	}
+}
+
+// ParseKeyDump returns Key Dump
+func parseKeyDump(ctx context.Context, result <-chan Result) <-chan Result {
+	go func() {
+		fmt.Println("parseKeyDump routine is called!")
+	}()
+	return result
+}
+
+func RunMigrationPipeline(source <-chan Result, pipes ...MigrationPipe) {
 	fmt.Println("Pipeline started. Waiting for pipeline to complete.")
+	msg := make(chan string)
+	go func() {
+		for _, pipe := range pipes {
+			source = pipe(source)
+		}
 
-	var errcList []<-chan error
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
+		for s := range source {
+			fmt.Println(s)
+		}
+		msg <- "Done"
+	}()
 
-	// Unzipping
-	ch, errc := Unzip(ctx, filePath)
-	errcList = append(errcList, errc)
-
-	orgs, errc := ParseOrg(ctx, ch)
-	errcList = append(errcList, errc)
-
-	keyDump, errc := ParseKeyDump(ctx, ch)
-	errcList = append(errcList, errc)
-
-	users, errc := ParseUser(ctx, ch)
-	errcList = append(errcList, errc)
-
-	existingUsers, errc := ConflictingUsers(ctx, users)
-	errcList = append(errcList, errc)
-
-	orgsUser, errc := OrgMembers(ctx, users)
-	errcList = append(errcList, errc)
-
-	adminUsers, errc := AdminUsers(ctx, users)
-	errcList = append(errcList, errc)
-	// // Files
-	// for c := range ch {
-	// 	fmt.Println("Files: ", c)
-	// }
-
-	// orgs
-	for org := range orgs {
-		fmt.Println("Organization: ", org)
-	}
-	fmt.Println()
-
-	// Keydump
-	for kd := range keyDump {
-		fmt.Println("Keydump: ", kd)
-	}
-	fmt.Println()
-
-	// Existing user
-	for eu := range existingUsers {
-		fmt.Println("Existing user: ", eu)
-	}
-	fmt.Println()
-
-	// User's Org
-	for ou := range orgsUser {
-		fmt.Println("User's Org: ", ou)
-	}
-
-	fmt.Println()
-	// Admin User
-	for au := range adminUsers {
-		fmt.Println("Admin User: ", au)
-	}
-
-	// Log all the errors stored in errcList variable
+	fmt.Println("Pipeline Status: ", <-msg)
 }
 
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-// /
-//
-//
-// /
-//
-//
-//
-//
-//
-// /
-//
 func main() {
-	// ch, _ := Unzip(context.Background(), "/home/dave/eureka/data-pipeline-golang/backup.zip")
-	// count := 1
-	// for i := range ch {
-	// 	fmt.Println(count, i)
-	// 	count++
-	// }
+	c := make(chan Result)
 
-	// Phase 2
-
-	// org := ParseOrg(Unzip("/home/dave/eureka/data-pipeline-golang/backup.zip"))
-	// kd := ParseKeyDump(Unzip("/home/dave/eureka/data-pipeline-golang/backup.zip"))
-	// // count := 1
-	// // for i := range org {
-	// // 	// fmt.Println(count, i)
-	// // 	count++
-	// // }
-	// SaveAndUpdate(org, kd)
-	RunMigrationPipeline("/home/dave/eureka/data-pipeline-golang/backup.zip")
+	RunMigrationPipeline(c,
+		UnzipSrc(""),
+		ParseOrg(c),
+		ParseUser(c),
+		ConflictingUsers(c),
+		OrgMembers(c),
+		AdminUsers(c),
+		ParseKeyDump(c),
+	)
 }

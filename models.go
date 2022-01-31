@@ -33,4 +33,5 @@ type User struct {
 	LastName    string `json:"last_name"`
 	MiddleName  string `json:"middle_name"`
 	PublicKey   string `json:"public_key"`
+	IsAdmin     bool
 }
