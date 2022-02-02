@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-type MigrationPipe func(<-chan pipeline.Result) <-chan pipeline.Result
+type MigrationPipe func(context.Context, <-chan pipeline.Result) <-chan pipeline.Result
 
 // ParseOrg returns MigrationPipe
-func UnzipSrc(res <-chan pipeline.Result) MigrationPipe {
-	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
-		return unzip(context.Background(), res)
+func UnzipSrc(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
+	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
+		return unzip(ctx, res)
 	}
 }
 
@@ -35,9 +35,9 @@ func unzip(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.R
 }
 
 // ParseOrg returns MigrationPipe
-func ParseOrg(res <-chan pipeline.Result) MigrationPipe {
-	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
-		return parseOrg(context.Background(), res)
+func ParseOrg(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
+	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
+		return parseOrg(ctx, res)
 	}
 }
 
@@ -64,9 +64,9 @@ func parseOrg(ctx context.Context, result <-chan pipeline.Result) <-chan pipelin
 }
 
 // ParseUser returns MigrationPipe
-func ParseUser(res <-chan pipeline.Result) MigrationPipe {
-	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
-		return parseUser(context.Background(), res)
+func ParseUser(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
+	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
+		return parseUser(ctx, res)
 	}
 }
 
@@ -92,9 +92,9 @@ func parseUser(ctx context.Context, result <-chan pipeline.Result) <-chan pipeli
 }
 
 // ConflictingUsers returns MigrationPipe
-func ConflictingUsers(res <-chan pipeline.Result) MigrationPipe {
-	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
-		return conflictingUsers(context.Background(), res)
+func ConflictingUsers(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
+	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
+		return conflictingUsers(ctx, res)
 	}
 }
 
@@ -122,9 +122,9 @@ func conflictingUsers(ctx context.Context, result <-chan pipeline.Result) <-chan
 }
 
 // OrgMembers returns MigrationPipe
-func OrgMembers(res <-chan pipeline.Result) MigrationPipe {
-	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
-		return orgMembers(context.Background(), res)
+func OrgMembers(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
+	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
+		return orgMembers(ctx, res)
 	}
 }
 
@@ -151,9 +151,9 @@ func orgMembers(ctx context.Context, result <-chan pipeline.Result) <-chan pipel
 }
 
 // AdminUsers Return MigrationPipe
-func AdminUsers(res <-chan pipeline.Result) MigrationPipe {
-	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
-		return adminUsers(context.Background(), res)
+func AdminUsers(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
+	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
+		return adminUsers(ctx, res)
 	}
 }
 
@@ -179,7 +179,7 @@ func adminUsers(ctx context.Context, result <-chan pipeline.Result) <-chan pipel
 	return out
 }
 
-func migrationPipeline(source <-chan pipeline.Result, pipes ...MigrationPipe) {
+func migrationPipeline(ctx context.Context, source <-chan pipeline.Result, pipes ...MigrationPipe) {
 	fmt.Println("Pipeline started...")
 	msg := make(chan string)
 
@@ -187,7 +187,7 @@ func migrationPipeline(source <-chan pipeline.Result, pipes ...MigrationPipe) {
 		for _, pipe := range pipes {
 			time.Sleep(time.Second)
 			fmt.Println()
-			source = pipe(source)
+			source = pipe(ctx, source)
 		}
 
 		for s := range source {
@@ -201,17 +201,17 @@ func migrationPipeline(source <-chan pipeline.Result, pipes ...MigrationPipe) {
 
 func RunPhaseOnePipeline(src string) {
 	c := make(chan pipeline.Result, 1)
-
+	ctx := context.Background()
 	c <- pipeline.Result{}
 	close(c)
 
-	migrationPipeline(c,
-		UnzipSrc(c),
-		ParseOrg(c),
-		ParseUser(c),
-		ConflictingUsers(c),
-		OrgMembers(c),
-		AdminUsers(c),
+	migrationPipeline(ctx, c,
+		UnzipSrc(ctx, c),
+		ParseOrg(ctx, c),
+		ParseUser(ctx, c),
+		ConflictingUsers(ctx, c),
+		OrgMembers(ctx, c),
+		AdminUsers(ctx, c),
 	)
 }
 
