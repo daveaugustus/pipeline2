@@ -17,16 +17,20 @@ func UnzipSrc(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func unzip(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Unzipping...!")
+	fmt.Println("Starting to unzip...")
 	out := make(chan pipeline.Result)
 	go func() {
-
+		fmt.Println("Processing to unzip...")
 		for res := range result {
-			out <- res
+			select {
+			case out <- res:
+			case <-ctx.Done():
+				return
+			}
 		}
 
 	}()
-	fmt.Println("Unzipping done!")
+	fmt.Println("Done unzipping!")
 	return out
 }
 
@@ -38,15 +42,19 @@ func ParseOrg(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func parseOrg(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Parsing orgs...!")
+	fmt.Println("Starting to parse orgs...")
 
 	out := make(chan pipeline.Result)
 	defer close(out)
 
 	go func() {
-
+		fmt.Println("Processing to parse orgs...")
 		for res := range result {
-			out <- res
+			select {
+			case out <- res:
+			case <-ctx.Done():
+				return
+			}
 		}
 
 	}()
@@ -63,17 +71,20 @@ func ParseUser(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func parseUser(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Parsing users...!")
+	fmt.Println("Starting to parsing users...")
 
 	out := make(chan pipeline.Result)
 	defer close(out)
 
 	go func() {
-
+		fmt.Println("Processing to parsing users...")
 		for res := range result {
-			out <- res
+			select {
+			case out <- res:
+			case <-ctx.Done():
+				return
+			}
 		}
-
 	}()
 
 	fmt.Println("Done parsing users!")
@@ -88,20 +99,25 @@ func ConflictingUsers(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func conflictingUsers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Checking for conflicting users...!")
+	fmt.Println("Starting to check conflicting users...")
 
 	out := make(chan pipeline.Result)
 	defer close(out)
 
 	go func() {
+		fmt.Println("Processing to check conflicting users...")
 
 		for res := range result {
-			out <- res
+			select {
+			case out <- res:
+			case <-ctx.Done():
+				return
+			}
 		}
 
 	}()
 
-	fmt.Println("Completed conflicting users check!")
+	fmt.Println("Done check conflicting users!")
 	return out
 }
 
@@ -113,15 +129,19 @@ func OrgMembers(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func orgMembers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Checking org, user associatian...!")
+	fmt.Println("Starting to check org users association...")
 
 	out := make(chan pipeline.Result)
 	defer close(out)
 
 	go func() {
-
+		fmt.Println("Processing to check org users association...")
 		for res := range result {
-			out <- res
+			select {
+			case out <- res:
+			case <-ctx.Done():
+				return
+			}
 		}
 
 	}()
@@ -138,15 +158,19 @@ func AdminUsers(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func adminUsers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Checking for admin users..!")
+	fmt.Println("Starting to check admin users...")
 
 	out := make(chan pipeline.Result)
 	defer close(out)
 
 	go func() {
-
+		fmt.Println("Processing to to check admin users...")
 		for res := range result {
-			out <- res
+			select {
+			case out <- res:
+			case <-ctx.Done():
+				return
+			}
 		}
 
 	}()
@@ -162,6 +186,7 @@ func migrationPipeline(source <-chan pipeline.Result, pipes ...MigrationPipe) {
 	go func() {
 		for _, pipe := range pipes {
 			time.Sleep(time.Second)
+			fmt.Println()
 			source = pipe(source)
 		}
 
