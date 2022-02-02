@@ -92,21 +92,6 @@ func adminUsers(ctx context.Context, result <-chan pipeline.Result) <-chan pipel
 	return result
 }
 
-// AdminUsers Return MigrationPipe
-func ParseKeyDump(res <-chan pipeline.Result) MigrationPipe {
-	return func(in <-chan pipeline.Result) <-chan pipeline.Result {
-		return parseKeyDump(context.Background(), res)
-	}
-}
-
-// ParseKeyDump returns Key Dump
-func parseKeyDump(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	go func() {
-		fmt.Println("parseKeyDump routine is called!")
-	}()
-	return result
-}
-
 func migrationPipeline(source <-chan pipeline.Result, pipes ...MigrationPipe) {
 	fmt.Println("Pipeline started. Waiting for pipeline to complete.")
 	msg := make(chan string)
@@ -132,11 +117,11 @@ func RunPhaseOnePipeline(src string) {
 
 	migrationPipeline(c,
 		UnzipSrc(c),
-		ParseOrg(c),
-		ParseUser(c),
-		ConflictingUsers(c),
-		OrgMembers(c),
-		AdminUsers(c),
+		// ParseOrg(c),
+		// ParseUser(c),
+		// ConflictingUsers(c),
+		// OrgMembers(c),
+		// AdminUsers(c),
 	)
 }
 
