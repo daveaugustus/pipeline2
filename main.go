@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"pipeline2/pipeline"
+	"time"
 )
 
 type MigrationPipe func(<-chan pipeline.Result) <-chan pipeline.Result
@@ -16,10 +17,17 @@ func UnzipSrc(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func unzip(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
+	fmt.Println("Unzipping...!")
+	out := make(chan pipeline.Result)
 	go func() {
-		fmt.Println("Zip function is called!")
+
+		for res := range result {
+			out <- res
+		}
+
 	}()
-	return result
+	fmt.Println("Unzipping done!")
+	return out
 }
 
 // ParseOrg returns MigrationPipe
@@ -30,10 +38,21 @@ func ParseOrg(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func parseOrg(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
+	fmt.Println("Parsing orgs...!")
+
+	out := make(chan pipeline.Result)
+	defer close(out)
+
 	go func() {
-		fmt.Println("ParseOrg routine is called!")
+
+		for res := range result {
+			out <- res
+		}
+
 	}()
-	return result
+
+	fmt.Println("Done parsing orgs!")
+	return out
 }
 
 // ParseUser returns MigrationPipe
@@ -44,10 +63,21 @@ func ParseUser(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func parseUser(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
+	fmt.Println("Parsing users...!")
+
+	out := make(chan pipeline.Result)
+	defer close(out)
+
 	go func() {
-		fmt.Println("ParseUser routine is called!")
+
+		for res := range result {
+			out <- res
+		}
+
 	}()
-	return result
+
+	fmt.Println("Done parsing users!")
+	return out
 }
 
 // ConflictingUsers returns MigrationPipe
@@ -58,10 +88,21 @@ func ConflictingUsers(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func conflictingUsers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
+	fmt.Println("Checking for conflicting users...!")
+
+	out := make(chan pipeline.Result)
+	defer close(out)
+
 	go func() {
-		fmt.Println("Conflicting routine is called!")
+
+		for res := range result {
+			out <- res
+		}
+
 	}()
-	return result
+
+	fmt.Println("Completed conflicting users check!")
+	return out
 }
 
 // OrgMembers returns MigrationPipe
@@ -72,10 +113,21 @@ func OrgMembers(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func orgMembers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
+	fmt.Println("Checking org, user associatian...!")
+
+	out := make(chan pipeline.Result)
+	defer close(out)
+
 	go func() {
-		fmt.Println("orgMembers routine is called!")
+
+		for res := range result {
+			out <- res
+		}
+
 	}()
-	return result
+
+	fmt.Println("Done checking associatian!")
+	return out
 }
 
 // AdminUsers Return MigrationPipe
@@ -86,17 +138,30 @@ func AdminUsers(res <-chan pipeline.Result) MigrationPipe {
 }
 
 func adminUsers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
+	fmt.Println("Checking for admin users..!")
+
+	out := make(chan pipeline.Result)
+	defer close(out)
+
 	go func() {
-		fmt.Println("adminUsers routine is called!")
+
+		for res := range result {
+			out <- res
+		}
+
 	}()
-	return result
+
+	fmt.Println("Done admin user check!")
+	return out
 }
 
 func migrationPipeline(source <-chan pipeline.Result, pipes ...MigrationPipe) {
-	fmt.Println("Pipeline started. Waiting for pipeline to complete.")
+	fmt.Println("Pipeline started...")
 	msg := make(chan string)
+
 	go func() {
 		for _, pipe := range pipes {
+			time.Sleep(time.Second)
 			source = pipe(source)
 		}
 
@@ -113,15 +178,15 @@ func RunPhaseOnePipeline(src string) {
 	c := make(chan pipeline.Result, 1)
 
 	c <- pipeline.Result{}
-	defer close(c)
+	close(c)
 
 	migrationPipeline(c,
 		UnzipSrc(c),
-		// ParseOrg(c),
-		// ParseUser(c),
-		// ConflictingUsers(c),
-		// OrgMembers(c),
-		// AdminUsers(c),
+		ParseOrg(c),
+		ParseUser(c),
+		ConflictingUsers(c),
+		OrgMembers(c),
+		AdminUsers(c),
 	)
 }
 
