@@ -2,219 +2,347 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"pipeline2/pipeline"
-	"time"
+	"sync"
 )
 
-type MigrationPipe func(context.Context, <-chan pipeline.Result) <-chan pipeline.Result
+type PipelineData struct {
+	Result pipeline.Result
+	Done   chan<- error
+	Ctx    context.Context
+}
 
-// ParseOrg returns MigrationPipe
-func UnzipSrc(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
-	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
-		return unzip(ctx, res)
+type PhaseOnePipleine struct {
+	in chan<- PipelineData
+}
+
+type PhaseOnePipelineProcessor func(<-chan PipelineData) <-chan PipelineData
+
+// ParseOrg returns PhaseOnePipelineProcessor
+func UnzipSrc() PhaseOnePipelineProcessor {
+	return func(result <-chan PipelineData) <-chan PipelineData {
+		return unzip(result)
 	}
 }
 
-func unzip(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Starting to unzip...")
-	out := make(chan pipeline.Result)
+func unzip(result <-chan PipelineData) <-chan PipelineData {
+	fmt.Println("Starting unzip pipeline")
+	out := make(chan PipelineData, 100)
 	go func() {
-		fmt.Println("Processing to unzip...")
+
 		for res := range result {
+			res.Result.Meta.UnzipFolder = "backup"
+			log.Printf("UnzipSrc: %+v", res)
 			select {
 			case out <- res:
-			case <-ctx.Done():
-				return
+			case <-res.Ctx.Done():
+				res.Done <- nil
 			}
 		}
-
+		fmt.Println("Closing unzip")
+		close(out)
 	}()
-	fmt.Println("Done unzipping!")
 	return out
 }
 
-// ParseOrg returns MigrationPipe
-func ParseOrg(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
-	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
-		return parseOrg(ctx, res)
+// ParseOrg returns PhaseOnePipelineProcessor
+func ParseOrg() PhaseOnePipelineProcessor {
+	return func(result <-chan PipelineData) <-chan PipelineData {
+		return parseOrg(result)
 	}
 }
 
-func parseOrg(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Starting to parse orgs...")
+func parseOrg(result <-chan PipelineData) <-chan PipelineData {
+	fmt.Println("Starting parse orgs pipeline")
 
-	out := make(chan pipeline.Result)
-	defer close(out)
+	out := make(chan PipelineData, 100)
 
 	go func() {
-		fmt.Println("Processing to parse orgs...")
-		for res := range result {
-			select {
-			case out <- res:
-			case <-ctx.Done():
-				return
-			}
+		fmt.Println("\nProcessing to parse orgs...")
+		orgs := []pipeline.Org{
+			{
+				Name:      "ABC",
+				FullName:  "ABC",
+				ActionOps: 1,
+			},
+			{
+				Name:      "PQR",
+				FullName:  "PQR",
+				ActionOps: 1,
+			},
 		}
 
+		for res := range result {
+			res.Result.ParsedResult.Orgs = orgs
+			log.Printf("\nParseOrg: %+v", res)
+			select {
+			case out <- res:
+			case <-res.Ctx.Done():
+				res.Done <- nil
+			}
+			fmt.Println("after write")
+		}
+		fmt.Println("CLosing orgs pipeline")
+		close(out)
 	}()
-
-	fmt.Println("Done parsing orgs!")
 	return out
 }
 
-// ParseUser returns MigrationPipe
-func ParseUser(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
-	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
-		return parseUser(ctx, res)
+// ParseUser returns PhaseOnePipelineProcessor
+func ParseUser() PhaseOnePipelineProcessor {
+	return func(result <-chan PipelineData) <-chan PipelineData {
+		return parseUser(result)
 	}
 }
 
-func parseUser(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Starting to parsing users...")
+func parseUser(result <-chan PipelineData) <-chan PipelineData {
+	fmt.Println("Starting parse user pipeline")
 
-	out := make(chan pipeline.Result)
-	defer close(out)
+	out := make(chan PipelineData, 100)
 
 	go func() {
 		fmt.Println("Processing to parsing users...")
+		users := []pipeline.User{
+			{
+				Username:    "davetweetlive",
+				Email:       "dave@mail.com",
+				DisplayName: "Dave",
+			},
+			{
+				Username:    "somerandomnun",
+				Email:       "someting@mail.com",
+				DisplayName: "SOmething",
+				IsAdmin:     true,
+			},
+		}
+
 		for res := range result {
+			res.Result.ParsedResult.Users = users
+			log.Printf("ParseUser: %+v", res)
 			select {
 			case out <- res:
-			case <-ctx.Done():
-				return
+			case <-res.Ctx.Done():
+				res.Done <- nil
 			}
 		}
+		fmt.Println("Closing parseUser")
+		close(out)
 	}()
 
-	fmt.Println("Done parsing users!")
 	return out
 }
 
-// ConflictingUsers returns MigrationPipe
-func ConflictingUsers(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
-	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
-		return conflictingUsers(ctx, res)
+// ConflictingUsers returns PhaseOnePipelineProcessor
+func ConflictingUsers() PhaseOnePipelineProcessor {
+	return func(result <-chan PipelineData) <-chan PipelineData {
+		return conflictingUsers(result)
 	}
 }
 
-func conflictingUsers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Starting to check conflicting users...")
+func conflictingUsers(result <-chan PipelineData) <-chan PipelineData {
+	fmt.Println("Starting conflicting user check pipeline")
 
-	out := make(chan pipeline.Result)
-	defer close(out)
+	out := make(chan PipelineData, 100)
 
 	go func() {
 		fmt.Println("Processing to check conflicting users...")
 
 		for res := range result {
+			res.Result.ParsedResult.Users[0].IsConflicting = true
+			log.Printf("Post conflictingUsers process: %+v", res)
 			select {
 			case out <- res:
-			case <-ctx.Done():
-				return
+			case <-res.Ctx.Done():
+				res.Done <- nil
 			}
 		}
+		fmt.Println("Closing conflictUser")
+		close(out)
 
 	}()
 
-	fmt.Println("Done check conflicting users!")
 	return out
 }
 
-// OrgMembers returns MigrationPipe
-func OrgMembers(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
-	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
-		return orgMembers(ctx, res)
+// OrgMembers returns PhaseOnePipelineProcessor
+func OrgMembers() PhaseOnePipelineProcessor {
+	return func(result <-chan PipelineData) <-chan PipelineData {
+		return orgMembers(result)
 	}
 }
 
-func orgMembers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Starting to check org users association...")
+func orgMembers(result <-chan PipelineData) <-chan PipelineData {
+	fmt.Println("Starting org user check pipeline")
 
-	out := make(chan pipeline.Result)
-	defer close(out)
+	out := make(chan PipelineData, 100)
 
 	go func() {
 		fmt.Println("Processing to check org users association...")
+		orgUser := []pipeline.OrgsUsersAssociations{
+			{
+				OrgName: pipeline.Org{
+					Name:      "ABC",
+					FullName:  "ABC",
+					ActionOps: 1,
+				},
+				Users: []pipeline.UserAssociation{
+					{
+						Username: "davetweetlive",
+						IsAdmin:  false,
+					},
+				},
+			},
+		}
+
 		for res := range result {
+			res.Result.ParsedResult.OrgsUsers = orgUser
+			log.Printf("Post orgMembers process: %+v", res)
 			select {
 			case out <- res:
-			case <-ctx.Done():
-				return
+			case <-res.Ctx.Done():
+				res.Done <- nil
 			}
 		}
+		fmt.Println("Closing orgmember")
+		close(out)
 
 	}()
 
-	fmt.Println("Done checking associatian!")
+	return out
+}
+
+// AdminUsers Return PhaseOnePipelineProcessor
+func AdminUsers() PhaseOnePipelineProcessor {
+	return func(result <-chan PipelineData) <-chan PipelineData {
+		return adminUsers(result)
+	}
+}
+
+func adminUsers(result <-chan PipelineData) <-chan PipelineData {
+	fmt.Println("Starting org admin user check pipeline")
+
+	out := make(chan PipelineData, 100)
+
+	go func() {
+		// fmt.Println("Processing to to check admin users...")
+		for res := range result {
+			select {
+			case out <- res:
+			case <-res.Ctx.Done():
+				res.Done <- nil
+			}
+		}
+		fmt.Println("Closing adminUsers")
+		close(out)
+
+	}()
+
 	return out
 }
 
 // AdminUsers Return MigrationPipe
-func AdminUsers(ctx context.Context, res <-chan pipeline.Result) MigrationPipe {
-	return func(ctx context.Context, in <-chan pipeline.Result) <-chan pipeline.Result {
-		return adminUsers(ctx, res)
+func ParseJSON() PhaseOnePipelineProcessor {
+	return func(result <-chan PipelineData) <-chan PipelineData {
+		return parseJSON(result)
 	}
 }
+func parseJSON(result <-chan PipelineData) <-chan PipelineData {
+	fmt.Println("JSON pipeline")
 
-func adminUsers(ctx context.Context, result <-chan pipeline.Result) <-chan pipeline.Result {
-	fmt.Println("Starting to check admin users...")
-
-	out := make(chan pipeline.Result)
-	defer close(out)
+	out := make(chan PipelineData, 100)
 
 	go func() {
-		fmt.Println("Processing to to check admin users...")
+		fmt.Println("Processing to JSON...")
 		for res := range result {
-			select {
-			case out <- res:
-			case <-ctx.Done():
+			if err := res.TOJSON(); err != nil {
 				return
 			}
+			// log.Printf("Binary Result: %+v", res)
+			select {
+			case out <- res:
+			case <-res.Ctx.Done():
+				res.Done <- nil
+			}
 		}
+		fmt.Println("Closing JSON")
+		// close(out)
 
 	}()
 
-	fmt.Println("Done admin user check!")
 	return out
 }
 
-func migrationPipeline(ctx context.Context, source <-chan pipeline.Result, pipes ...MigrationPipe) {
+func migrationPipeline(source <-chan PipelineData, pipes ...PhaseOnePipelineProcessor) {
 	fmt.Println("Pipeline started...")
-	msg := make(chan string)
 
 	go func() {
 		for _, pipe := range pipes {
-			time.Sleep(time.Second)
-			fmt.Println()
-			source = pipe(ctx, source)
+			source = pipe(source)
 		}
 
 		for s := range source {
-			fmt.Println(s)
+			s.Done <- nil
 		}
-		msg <- "Done"
 	}()
-
-	fmt.Println("Pipeline Status: ", <-msg)
 }
 
-func RunPhaseOnePipeline(src string) {
-	c := make(chan pipeline.Result, 1)
-	ctx := context.Background()
-	c <- pipeline.Result{}
-	close(c)
-
-	migrationPipeline(ctx, c,
-		UnzipSrc(ctx, c),
-		ParseOrg(ctx, c),
-		ParseUser(ctx, c),
-		ConflictingUsers(ctx, c),
-		OrgMembers(ctx, c),
-		AdminUsers(ctx, c),
+func SetupPhaseOnePipeline() PhaseOnePipleine {
+	c := make(chan PipelineData, 100)
+	migrationPipeline(c,
+		UnzipSrc(),
+		ParseOrg(),
+		ParseUser(),
+		ConflictingUsers(),
+		OrgMembers(),
+		AdminUsers(),
+		// ParseJSON(),
 	)
+	return PhaseOnePipleine{in: c}
+}
+
+func (p *PhaseOnePipleine) Run(result pipeline.Result) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		done := make(chan error)
+		select {
+		case p.in <- PipelineData{Result: result, Done: done, Ctx: ctx}:
+		}
+		err := <-done
+		if err != nil {
+			fmt.Println("received error")
+		}
+		fmt.Println("received done")
+		// status <- "done"
+	}()
+	wg.Wait()
 }
 
 func main() {
-	RunPhaseOnePipeline("")
+	fmt.Println("Pipeline running")
+	msg := pipeline.Result{Meta: pipeline.Meta{ZipFile: "/home/dave/eureka/pipeline2/backup.zip"}}
+
+	p1Pipeline := SetupPhaseOnePipeline()
+	p1Pipeline.Run(msg)
+}
+
+func (p PipelineData) TOJSON() error {
+	bte, err := json.Marshal(p.Result)
+	if err != nil {
+		fmt.Println("Marshal Error: ", err)
+		return err
+	}
+
+	if err := ioutil.WriteFile("dem.json", bte, 0666); err != nil {
+		return err
+	}
+	return nil
 }
